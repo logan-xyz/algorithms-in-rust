@@ -9,6 +9,7 @@ where
     V: Default,
 {
     children: HashMap<K, Node<K, V>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     value: Option<V>,
 }
 
@@ -94,25 +95,22 @@ mod test {
         //             "children": {
         //               "r": {
         //                 "children": {
-        //                   "k": {
-        //                     "children": {},
-        //                     "value": 20
-        //                   },
         //                   "z": {
         //                     "children": {},
         //                     "value": 10
+        //                   },
+        //                   "k": {
+        //                     "children": {},
+        //                     "value": 20
         //                   }
         //                 },
         //                 "value": 5
         //               }
-        //             },
-        //             "value": null
+        //             }
         //           }
-        //         },
-        //         "value": null
+        //         }
         //       }
-        //     },
-        //     "value": null
+        //     }
         //   }
         // }
         println!("{}", serde_json::to_string_pretty(&trie).unwrap());
