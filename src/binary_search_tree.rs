@@ -112,7 +112,6 @@ where
         BinarySearchTreeIterator::new(self)
     }
 
-    // private method
     fn values<'a>(&'a self, vs: &mut VecDeque<&'a T>) {
         if self.left.is_some() {
             self.left.as_ref().unwrap().values(vs);
