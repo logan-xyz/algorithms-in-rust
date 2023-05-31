@@ -45,13 +45,38 @@ impl<T> List<T> {
         IntoIter(self)
     }
 
-    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+    // pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+    //     // first try
+    //     // let next = self.head.as_ref().map(|node| &**node);
+    //     // Iter { next }
+    //     //
+    //     // slily better
+    //     // let next = self.head.as_ref().map::<&Node<T>, _>(|node| node);
+    //     // Iter { next }
+    //
+    //     // finally
+    //     Iter {
+    //         next: self.head.as_deref(),
+    //     }
+    // }
+
+    // lifetime elision
+    pub fn iter(&self) -> Iter<T> {
         Iter {
             next: self.head.as_deref(),
         }
     }
 
-    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
+    // if you're not comfortable "hiding" that a struct contains a lifetime, you can use the
+    // Rust 2018 "explicitly elided lifetime" syntax, '_
+    //
+    // pub fn iter(&self) -> Iter<'_, T> {
+    //     Iter {
+    //         next: self.head.as_deref(),
+    //     }
+    // }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
         IterMut {
             next: self.head.as_deref_mut(),
         }
@@ -75,6 +100,8 @@ pub struct Iter<'a, T> {
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
+        // map takes self as its' first argument but since & is copy, Option<&> is also Copy.
+        // so Option<&T> is copied instead of moved and self remains to be valid after calling self.next.take
         self.next.map(|node| {
             self.next = node.next.as_deref();
             &node.elme
@@ -85,6 +112,20 @@ impl<'a, T> Iterator for Iter<'a, T> {
 pub struct IterMut<'a, T> {
     next: Option<&'a mut Node<T>>,
 }
+
+// impl<'a, T> Iterator for IterMut<'a, T> {
+//     type Item = &'a mut T;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         // map takes self as its' first argument. &mut is not copy, and Option<&mut> is not Copy too.
+//         // (if you copied an &mut, you'd have two &mut's to the same location in memory, which is forbidden)
+//         // So Option<&mut T> will be moved out of self after calling self.next.map, which are not allowed.
+//         // you can't move some apart it from a either mutable or immutable reference.
+//         self.next.map(|node| {
+//             self.next = node.next.as_deref_mut();
+//             &mut node.elme
+//         })
+//     }
+// }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
