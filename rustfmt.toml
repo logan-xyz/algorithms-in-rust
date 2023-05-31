@@ -1,0 +1,34 @@
+# Rustfmt configuration doc:  https://rust-lang.github.io/rustfmt/?version=v1.5.2&search=
+
+# default 100
+max_width = 80
+# default false
+reorder_imports = true
+# default 60
+array_width = 40
+# default 70
+attr_fn_like_width = 60
+# default 0
+blank_lines_lower_bound = 1
+# default 60
+chain_width = 40
+# default false
+wrap_comments = true
+# default false
+condense_wildcard_suffixes = true
+# default false
+force_multiline_blocks = true
+# default false
+format_code_in_doc_comments = true
+# default false
+format_macro_matchers = true
+# default false
+format_strings = true
+# default Mixed
+imports_layout = "HorizontalVertical"
+# default false
+match_block_trailing_comma = true
+# default false
+normalize_comments = true
+# default false
+normalize_doc_attributes = true

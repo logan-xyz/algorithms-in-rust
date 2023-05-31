@@ -29,16 +29,20 @@ impl<T> List<T> {
             Some(node) => {
                 self.head = node.next;
                 Some(node.elme)
-            }
+            },
         }
     }
 
     pub fn peek(&self) -> Option<&T> {
-        self.head.as_ref().map(|node| &node.elme)
+        self.head
+            .as_ref()
+            .map(|node| &node.elme)
     }
 
     pub fn peek_mut(&mut self) -> Option<&mut T> {
-        self.head.as_mut().map(|node| &mut node.elme)
+        self.head
+            .as_mut()
+            .map(|node| &mut node.elme)
     }
 
     pub fn into_iter(self) -> IntoIter<T> {

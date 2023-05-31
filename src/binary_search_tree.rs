@@ -36,8 +36,14 @@ where
             .as_ref()
             .map_or(false, |key| match key.cmp(value) {
                 Ordering::Equal => true,
-                Ordering::Greater => self.left.as_ref().map_or(false, |node| node.search(value)),
-                Ordering::Less => self.right.as_ref().map_or(false, |node| node.search(value)),
+                Ordering::Greater => self
+                    .left
+                    .as_ref()
+                    .map_or(false, |node| node.search(value)),
+                Ordering::Less => self
+                    .right
+                    .as_ref()
+                    .map_or(false, |node| node.search(value)),
             })
     }
 
@@ -56,12 +62,12 @@ where
             match target_node {
                 Some(ref mut node) => {
                     node.insert(value);
-                }
+                },
                 None => {
                     let mut node = Self::new();
                     node.insert(value);
                     *target_node = Some(Box::new(node));
-                }
+                },
             }
         }
     }
@@ -87,7 +93,10 @@ where
                 .right
                 .as_ref()
                 .map_or(Some(key), |node| node.floor(value).or(Some(key))),
-            Ordering::Greater => self.left.as_ref().map_or(None, |node| node.floor(value)),
+            Ordering::Greater => self
+                .left
+                .as_ref()
+                .and_then(|node| node.floor(value)),
         }
     }
 
@@ -96,7 +105,10 @@ where
 
         match key.cmp(value) {
             Ordering::Equal => Some(key),
-            Ordering::Less => self.right.as_ref().map_or(None, |node| node.ceil(value)),
+            Ordering::Less => self
+                .right
+                .as_ref()
+                .and_then(|node| node.ceil(value)),
             Ordering::Greater => self
                 .left
                 .as_ref()
@@ -184,7 +196,10 @@ mod test {
     fn iter() {
         let (tree, _, sorted) = get_data();
         // should iter through the items in ascending order
-        let v = tree.iter().map(|v| *v).collect::<Vec<usize>>();
+        let v = tree
+            .iter()
+            .map(|v| *v)
+            .collect::<Vec<usize>>();
 
         println!("v = {:?}", v);
 
