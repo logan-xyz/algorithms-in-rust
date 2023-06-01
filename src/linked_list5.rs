@@ -79,11 +79,82 @@ impl<T> LinkedList<T> {
     pub fn front_mut(&mut self) -> Option<&mut T> {
         unsafe { Some(&mut self.front?.as_mut().elem) }
     }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            back: self.back,
+            front: self.back,
+            len: self.len,
+            _boo: PhantomData,
+        }
+    }
 }
 
 impl<T> Drop for LinkedList<T> {
     fn drop(&mut self) {
         while let Some(_) = self.pop_front() {}
+    }
+}
+
+pub struct Iter<'a, T> {
+    front: Link<T>,
+    back: Link<T>,
+    len: usize,
+    _boo: PhantomData<&'a T>,
+}
+
+impl<'a, T> IntoIterator for &'a LinkedList<T> {
+    type IntoIter = Iter<'a, T>;
+    type Item = &'a T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            let node = self.front?;
+
+            self.len -= 1;
+
+            unsafe {
+                self.front = (*node.as_ptr()).back;
+                Some(&(*node.as_ptr()).elem)
+            }
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            let node = self.back?;
+
+            self.len -= 1;
+
+            unsafe {
+                self.back = (*node.as_ptr()).front;
+                Some(&(*node.as_ptr()).elem)
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T> ExactSizeIterator for Iter<'a, T> {
+    fn len(&self) -> usize {
+        self.len
     }
 }
 
