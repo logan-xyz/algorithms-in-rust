@@ -51,6 +51,25 @@ impl<T> LinkedList<T> {
             self.len += 1;
         };
     }
+    pub fn push_back(&mut self, elem: T) {
+        unsafe {
+            let new = NonNull::new_unchecked(Box::into_raw(Box::new(Node {
+                back: None,
+                front: None,
+                elem,
+            })));
+
+            if let Some(old) = self.back {
+                (*old.as_ptr()).back = Some(new);
+                (*new.as_ptr()).front = Some(old);
+            } else {
+                self.front = Some(new);
+            }
+
+            self.back = Some(new);
+            self.len += 1;
+        }
+    }
 
     pub fn pop_front(&mut self) -> Option<T> {
         unsafe {
@@ -72,12 +91,45 @@ impl<T> LinkedList<T> {
         }
     }
 
+    pub fn pop_back(&mut self) -> Option<T> {
+        unsafe {
+            self.back.map(|node| {
+                let boxed_node = Box::from_raw(node.as_ptr());
+                let result = boxed_node.elem;
+
+                self.back = boxed_node.front;
+                if let Some(new) = self.back {
+                    (*new.as_ptr()).back = None;
+                } else {
+                    self.front = None;
+                }
+
+                self.len -= 1;
+                result
+            })
+        }
+    }
+
     pub fn front(&self) -> Option<&T> {
         unsafe { Some(&self.front?.as_ref().elem) }
     }
 
     pub fn front_mut(&mut self) -> Option<&mut T> {
         unsafe { Some(&mut self.front?.as_mut().elem) }
+    }
+
+    pub fn back(&self) -> Option<&T> {
+        unsafe {
+            self.back
+                .map(|node| &(*node.as_ptr()).elem)
+        }
+    }
+
+    pub fn back_mut(&mut self) -> Option<&mut T> {
+        unsafe {
+            self.back
+                .map(|node| &mut (*node.as_ptr()).elem)
+        }
     }
 
     pub fn iter(&self) -> Iter<T> {
@@ -87,6 +139,19 @@ impl<T> LinkedList<T> {
             len: self.len,
             _boo: PhantomData,
         }
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut {
+            front: self.front,
+            back: self.back,
+            len: self.len,
+            _boo: PhantomData,
+        }
+    }
+
+    pub fn into_iter(self) -> IntoIter<T> {
+        IntoIter { list: self }
     }
 }
 
@@ -158,6 +223,99 @@ impl<'a, T> ExactSizeIterator for Iter<'a, T> {
     }
 }
 
+pub struct IntoIter<T> {
+    list: LinkedList<T>,
+}
+
+impl<T> IntoIterator for LinkedList<T> {
+    type IntoIter = IntoIter<T>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_iter()
+    }
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.list.pop_front()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.list.len, Some(self.list.len))
+    }
+}
+
+impl<T> DoubleEndedIterator for IntoIter<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.list.pop_back()
+    }
+}
+
+impl<T> ExactSizeIterator for IntoIter<T> {
+    fn len(&self) -> usize {
+        self.list.len
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut LinkedList<T> {
+    type IntoIter = IterMut<'a, T>;
+    type Item = &'a mut T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+pub struct IterMut<'a, T> {
+    front: Link<T>,
+    back: Link<T>,
+    len: usize,
+    _boo: PhantomData<&'a T>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            self.front.map(|node| unsafe {
+                self.len -= 1;
+                self.front = (*node.as_ptr()).back;
+                &mut (*node.as_ptr()).elem
+            })
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            self.back.map(|node| unsafe {
+                self.len -= 1;
+                self.back = (*node.as_ptr()).front;
+                &mut (*node.as_ptr()).elem
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::LinkedList;
@@ -166,12 +324,10 @@ mod test {
     fn test_basic_front() {
         let mut list = LinkedList::new();
 
-        // Try to break an empty list
         assert_eq!(list.len(), 0);
         assert_eq!(list.pop_front(), None);
         assert_eq!(list.len(), 0);
 
-        // Try to break a one item list
         list.push_front(10);
         assert_eq!(list.len(), 1);
         assert_eq!(list.pop_front(), Some(10));
@@ -179,7 +335,6 @@ mod test {
         assert_eq!(list.pop_front(), None);
         assert_eq!(list.len(), 0);
 
-        // Mess around
         list.push_front(10);
         assert_eq!(list.len(), 1);
         list.push_front(20);
