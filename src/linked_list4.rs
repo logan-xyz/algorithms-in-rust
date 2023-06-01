@@ -1,15 +1,15 @@
 use std::ptr;
 
-pub struct List<T> {
-    head: Link<T>,
-    tail: *mut Node<T>,
-}
-
 type Link<T> = *mut Node<T>;
 
 struct Node<T> {
     elem: T,
     next: Link<T>,
+}
+
+pub struct List<T> {
+    head: Link<T>,
+    tail: Link<T>,
 }
 
 impl<T> List<T> {
@@ -51,11 +51,85 @@ impl<T> List<T> {
             Some(head.elem)
         }
     }
+
+    pub fn into_iter(self) -> IntoIter<T> {
+        IntoIter(self)
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        if self.head.is_null() {
+            Iter { next: None }
+        } else {
+            Iter {
+                next: unsafe { Some(&*self.head) },
+            }
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        if self.head.is_null() {
+            IterMut { next: None }
+        } else {
+            IterMut {
+                next: unsafe { Some(&mut *self.head) },
+            }
+        }
+    }
 }
 
 impl<T> Drop for List<T> {
     fn drop(&mut self) {
         while let Some(_) = self.pop() {}
+    }
+}
+
+pub struct IntoIter<T>(List<T>);
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.pop()
+    }
+}
+
+pub struct Iter<'a, T> {
+    next: Option<&'a Node<T>>,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.next.take() {
+            None => None,
+            Some(node) => {
+                if !node.next.is_null() {
+                    self.next = unsafe { Some(&*node.next) };
+                }
+
+                Some(&node.elem)
+            },
+        }
+    }
+}
+
+pub struct IterMut<'a, T> {
+    next: Option<&'a mut Node<T>>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.next.take() {
+            None => None,
+            Some(node) => {
+                if !node.next.is_null() {
+                    self.next = unsafe { Some(&mut *node.next) };
+                }
+
+                Some(&mut node.elem)
+            },
+        }
     }
 }
 
