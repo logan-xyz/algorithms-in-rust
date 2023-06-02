@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Debug},
     hash::{Hash, Hasher},
     marker::PhantomData,
+    mem,
     ptr::{self, NonNull},
 };
 
@@ -253,17 +254,235 @@ impl<'a, T> CursorMut<'a, T> {
 
     pub fn peek_next(&mut self) -> Option<&mut T> {
         unsafe {
-            self.cur
-                .and_then(|node| (*node.as_ptr()).back)
-                .map(|node| &mut (*node.as_ptr()).elem)
+            let next = if let Some(cur) = self.cur {
+                (*cur.as_ptr()).back
+            } else {
+                self.list.front
+            };
+
+            next.map(|node| &mut (*node.as_ptr()).elem)
         }
     }
 
     pub fn peek_prev(&mut self) -> Option<&mut T> {
         unsafe {
-            self.cur
-                .and_then(|node| (*node.as_ptr()).front)
-                .map(|node| &mut (*node.as_ptr()).elem)
+            let next = if let Some(cur) = self.cur {
+                (*cur.as_ptr()).front
+            } else {
+                self.list.back
+            };
+
+            next.map(|node| &mut (*node.as_ptr()).elem)
+        }
+    }
+
+    pub fn split_before(&mut self) -> LinkedList<T> {
+        // We have this:
+        //
+        //     list.front -> A <-> B <-> C <-> D <- list.back
+        //                               ^
+        //                              cur
+        //
+        //
+        // And we want to produce this:
+        //
+        //     list.front -> C <-> D <- list.back
+        //                   ^
+        //                  cur
+        //
+        //
+        //    return.front -> A <-> B <- return.back
+        //
+        if let Some(cur) = self.cur {
+            let old_len = self.list.len;
+            let old_idx = self.index.unwrap();
+            let prev = unsafe { (*cur.as_ptr()).front };
+
+            let new_len = old_len - old_idx;
+            let new_idx = Some(0);
+            let new_front = self.cur;
+            let new_back = self.list.back;
+
+            let ouput_len = old_idx;
+            let output_front = self.list.front;
+            let output_back = prev;
+
+            // Break the links between cur and prev
+            if let Some(prev) = prev {
+                unsafe {
+                    (*cur.as_ptr()).front.take();
+                    (*prev.as_ptr()).back.take();
+                }
+            }
+
+            self.list.len = new_len;
+            self.list.front = new_front;
+            self.list.back = new_back;
+            self.index = new_idx;
+
+            LinkedList {
+                len: ouput_len,
+                front: output_front,
+                back: output_back,
+                _boo: PhantomData,
+            }
+        } else {
+            mem::replace(self.list, LinkedList::new())
+        }
+    }
+
+    pub fn split_after(&mut self) -> LinkedList<T> {
+        // We have this:
+        //
+        //     list.front -> A <-> B <-> C <-> D <- list.back
+        //                         ^
+        //                        cur
+        //
+        //
+        // And we want to produce this:
+        //
+        //     list.front -> A <-> B <- list.back
+        //                         ^
+        //                        cur
+        //
+        //
+        //    return.front -> C <-> D <- return.back
+        //
+        if let Some(cur) = self.cur {
+            unsafe {
+                let old_len = self.list.len;
+                let old_idx = self.index.unwrap();
+                let next = (*cur.as_ptr()).back;
+
+                let new_len = old_idx + 1;
+                let new_back = self.cur;
+                let new_front = self.list.front;
+                let new_idx = Some(old_idx);
+
+                let output_len = old_len - new_len;
+                let output_front = next;
+                let output_back = self.list.back;
+
+                if let Some(next) = next {
+                    (*cur.as_ptr()).back = None;
+                    (*next.as_ptr()).front = None;
+                }
+
+                self.list.len = new_len;
+                self.list.front = new_front;
+                self.list.back = new_back;
+                self.index = new_idx;
+
+                LinkedList {
+                    front: output_front,
+                    back: output_back,
+                    len: output_len,
+                    _boo: PhantomData,
+                }
+            }
+        } else {
+            std::mem::replace(self.list, LinkedList::new())
+        }
+    }
+
+    // full implementation
+    // pub fn splice_before(&mut self, remove_range: RangeBounds<usize>, mut replace_with: LinkedList<T>) {}
+
+    pub fn splice_before(&mut self, mut input: LinkedList<T>) {
+        // We have this:
+        //
+        // input.front -> 1 <-> 2 <- input.back
+        //
+        // list.front -> A <-> B <-> C <- list.back
+        //                     ^
+        //                    cur
+        //
+        //
+        // Becoming this:
+        //
+        // list.front -> A <-> 1 <-> 2 <-> B <-> C <- list.back
+        //                                 ^
+        //                                cur
+        //
+        unsafe {
+            if input.is_empty() {
+            } else if let Some(cur) = self.cur {
+                let in_front = input.front.take().unwrap();
+                let in_back = input.back.take().unwrap();
+
+                if let Some(prev) = (*cur.as_ptr()).front {
+                    (*prev.as_ptr()).back = Some(in_front);
+                    (*in_front.as_ptr()).front = Some(prev);
+                    (*cur.as_ptr()).front = Some(in_back);
+                    (*in_back.as_ptr()).back = Some(cur);
+                } else {
+                    (*cur.as_ptr()).front = Some(in_back);
+                    (*in_back.as_ptr()).back = Some(cur);
+                    self.list.front = Some(in_front);
+                }
+                *self.index.as_mut().unwrap() += input.len;
+            } else if let Some(back) = self.list.back {
+                let in_front = input.front.take().unwrap();
+                let in_back = input.back.take().unwrap();
+
+                (*back.as_ptr()).back = Some(in_front);
+                (*in_front.as_ptr()).front = Some(back);
+                self.list.back = Some(in_back);
+            } else {
+                std::mem::swap(self.list, &mut input);
+            }
+
+            self.list.len += input.len;
+            input.len = 0;
+        }
+    }
+
+    pub fn splice_after(&mut self, mut input: LinkedList<T>) {
+        // We have this:
+        //
+        // input.front -> 1 <-> 2 <- input.back
+        //
+        // list.front -> A <-> B <-> C <- list.back
+        //                     ^
+        //                    cur
+        //
+        //
+        // Becoming this:
+        //
+        // list.front -> A <-> B <-> 1 <-> 2 <-> C <- list.back
+        //                     ^
+        //                    cur
+        //
+        //
+        unsafe {
+            if input.is_empty() {
+            } else if let Some(cur) = self.cur {
+                let in_front = input.front.take().unwrap();
+                let in_back = input.back.take().unwrap();
+
+                if let Some(next) = (*cur.as_ptr()).back {
+                    (*next.as_ptr()).front = Some(in_back);
+                    (*in_back.as_ptr()).back = Some(next);
+                    (*cur.as_ptr()).back = Some(in_front);
+                    (*in_front.as_ptr()).front = Some(cur);
+                } else {
+                    (*cur.as_ptr()).back = Some(in_front);
+                    (*in_front.as_ptr()).front = Some(cur);
+                    self.list.back = Some(in_back);
+                }
+            } else if let Some(front) = self.list.front {
+                let in_front = input.front.take().unwrap();
+                let in_back = input.back.take().unwrap();
+
+                (*front.as_ptr()).front = Some(in_back);
+                (*in_back.as_ptr()).back = Some(front);
+                self.list.front = Some(in_front);
+            } else {
+                std::mem::swap(self.list, &mut input);
+            }
+
+            self.list.len += input.len;
+            input.len = 0;
         }
     }
 }
@@ -504,6 +723,7 @@ mod test {
     fn list_from<T: Clone>(v: &[T]) -> LinkedList<T> {
         v.iter().map(|x| (*x).clone()).collect()
     }
+
     #[allow(dead_code)]
     fn assert_properties() {
         fn is_send<T: Send>() {}
@@ -791,5 +1011,118 @@ mod test {
         assert_eq!(map.remove(&list2), Some("list2"));
 
         assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_cursor_move_peek() {
+        let mut m: LinkedList<u32> = LinkedList::new();
+        m.extend([1, 2, 3, 4, 5, 6]);
+        let mut cursor = m.cursor_mut();
+        cursor.move_next();
+        assert_eq!(cursor.current(), Some(&mut 1));
+        assert_eq!(cursor.peek_next(), Some(&mut 2));
+        assert_eq!(cursor.peek_prev(), None);
+        assert_eq!(cursor.index(), Some(0));
+        cursor.move_prev();
+        assert_eq!(cursor.current(), None);
+        assert_eq!(cursor.peek_next(), Some(&mut 1));
+        assert_eq!(cursor.peek_prev(), Some(&mut 6));
+        assert_eq!(cursor.index(), None);
+        cursor.move_next();
+        cursor.move_next();
+        assert_eq!(cursor.current(), Some(&mut 2));
+        assert_eq!(cursor.peek_next(), Some(&mut 3));
+        assert_eq!(cursor.peek_prev(), Some(&mut 1));
+        assert_eq!(cursor.index(), Some(1));
+
+        let mut cursor = m.cursor_mut();
+        cursor.move_prev();
+        assert_eq!(cursor.current(), Some(&mut 6));
+        assert_eq!(cursor.peek_next(), None);
+        assert_eq!(cursor.peek_prev(), Some(&mut 5));
+        assert_eq!(cursor.index(), Some(5));
+        cursor.move_next();
+        assert_eq!(cursor.current(), None);
+        assert_eq!(cursor.peek_next(), Some(&mut 1));
+        assert_eq!(cursor.peek_prev(), Some(&mut 6));
+        assert_eq!(cursor.index(), None);
+        cursor.move_prev();
+        cursor.move_prev();
+        assert_eq!(cursor.current(), Some(&mut 5));
+        assert_eq!(cursor.peek_next(), Some(&mut 6));
+        assert_eq!(cursor.peek_prev(), Some(&mut 4));
+        assert_eq!(cursor.index(), Some(4));
+    }
+
+    #[test]
+    fn test_cursor_mut_insert() {
+        let mut m: LinkedList<u32> = LinkedList::new();
+        m.extend([1, 2, 3, 4, 5, 6]);
+        let mut cursor = m.cursor_mut();
+        cursor.move_next();
+        cursor.splice_before(Some(7).into_iter().collect());
+        cursor.splice_after(Some(8).into_iter().collect());
+        // check_links(&m);
+        assert_eq!(
+            m.iter().cloned().collect::<Vec<_>>(),
+            &[7, 1, 8, 2, 3, 4, 5, 6]
+        );
+        let mut cursor = m.cursor_mut();
+        cursor.move_next();
+        cursor.move_prev();
+        cursor.splice_before(Some(9).into_iter().collect());
+        cursor.splice_after(Some(10).into_iter().collect());
+        check_links(&m);
+        assert_eq!(
+            m.iter().cloned().collect::<Vec<_>>(),
+            &[10, 7, 1, 8, 2, 3, 4, 5, 6, 9]
+        );
+
+        let mut m: LinkedList<u32> = LinkedList::new();
+        m.extend([1, 8, 2, 3, 4, 5, 6]);
+        let mut cursor = m.cursor_mut();
+        cursor.move_next();
+        let mut p: LinkedList<u32> = LinkedList::new();
+        p.extend([100, 101, 102, 103]);
+        let mut q: LinkedList<u32> = LinkedList::new();
+        q.extend([200, 201, 202, 203]);
+        cursor.splice_after(p);
+        cursor.splice_before(q);
+        check_links(&m);
+        assert_eq!(
+            m.iter().cloned().collect::<Vec<_>>(),
+            &[200, 201, 202, 203, 1, 100, 101, 102, 103, 8, 2, 3, 4, 5, 6]
+        );
+        let mut cursor = m.cursor_mut();
+        cursor.move_next();
+        cursor.move_prev();
+        let tmp = cursor.split_before();
+        m = tmp;
+        let mut cursor = m.cursor_mut();
+        cursor.move_next();
+        cursor.move_next();
+        cursor.move_next();
+        cursor.move_next();
+        cursor.move_next();
+        cursor.move_next();
+        cursor.move_next();
+        let tmp = cursor.split_after();
+        assert_eq!(
+            tmp.into_iter().collect::<Vec<_>>(),
+            &[102, 103, 8, 2, 3, 4, 5, 6]
+        );
+        check_links(&m);
+        assert_eq!(
+            m.iter().cloned().collect::<Vec<_>>(),
+            &[200, 201, 202, 203, 1, 100, 101]
+        );
+    }
+
+    fn check_links<T: Eq + std::fmt::Debug>(list: &LinkedList<T>) {
+        let from_front: Vec<_> = list.iter().collect();
+        let from_back: Vec<_> = list.iter().rev().collect();
+        let re_reved: Vec<_> = from_back.into_iter().rev().collect();
+
+        assert_eq!(from_front, re_reved);
     }
 }
